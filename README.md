@@ -1,5 +1,35 @@
 # xAI Plugin Marketplace
 
+This repository is a catalog, not a plugin host. It is a fork of
+[`xai-org/plugin-marketplace`](https://github.com/xai-org/plugin-marketplace), the plugin index that Grok Build reads
+to browse, install and update plugins; the upstream repository is the catalog of record.
+
+It is for plugin authors who want a plugin listed, and for reviewers and maintainers who need the catalog to stay
+safe to install from. The problem it solves is trust at install time: plugins can run code and reach data on a
+user's machine, so every listing has to point at an exact, reviewable commit rather than a moving branch.
+
+What is in the repository:
+
+- `.grok-plugin/marketplace.json`, the catalog (36 entries at commit `98d4056`; 32 point at upstream repositories
+  pinned to a full commit SHA and 4 are vendored under `external_plugins/`);
+- `.grok-plugin/plugin-index.json`, a generated list of each plugin's skills, commands, agents, MCP servers, hooks and
+  LSP servers, so a client can show contents before install;
+- Python scripts that validate SHA pins, regenerate and check the index, and open daily pull requests that advance
+  pins when a plugin's version changes;
+- GitHub Actions that run the validation on every pull request and the bump job on a daily schedule.
+
+See [docs/architecture.md](docs/architecture.md) for how these parts connect, and [CONTRIBUTING.md](CONTRIBUTING.md)
+for how to submit a plugin.
+
+## Status
+
+| Item | State |
+|---|---|
+| Catalog, index generator, validator and CI as described above | Present in this repository; `python3 scripts/validate-catalog.py` passes at commit `98d4056`. |
+| This fork versus upstream | On 2026-11-08 the fork had no commits of its own and was 5 commits behind `xai-org/plugin-marketplace` `main`. |
+| GoodQA plugin entry | None, in this fork or in the upstream catalog as checked on 2026-11-08. |
+| Roadmap | None is defined in this repository. Changes here follow upstream; process changes belong in upstream issues and pull requests. |
+
 The official catalog of plugins for Grok Build. This repo is an index that points at plugin sources so Grok Build can browse, install, and update them.
 
 > [!WARNING]
