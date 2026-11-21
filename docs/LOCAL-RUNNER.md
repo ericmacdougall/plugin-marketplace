@@ -18,12 +18,12 @@ login). launchd runs an installed copy, `~/gha-offload/bin/run-plugin-marketplac
    only, no upstream remote) to `origin/main`;
 3. runs `python3 -B scripts/bump-plugin-shas.py --only "" --base-branch main
    --github-output <temp file>`. It never passes `--force` and clears
-   `FORCE_BUMP`, so it never force-pushes; if today's `bump/daily-*` branch
-   exists, the bump is a no-op, so a run that fails partway is not retried
-   until the next day (or a manual `gh workflow run` with force).
+   `FORCE_BUMP`, so it never force-pushes.
    **Cross-day dedup:** a plugin that already has an open bump PR (any day) is
-   skipped, and an open `bump/daily-*` PR is reused as the base, so unmerged
-   stacks never multiply. A plugin branch left over from a closed PR on the
+   skipped, and an open `bump/daily-*` PR is reused as the base (if it already
+   contains `main`; otherwise a fresh daily is opened), so unmerged stacks
+   never multiply. If today's daily branch exists with no open PR (merged or
+   closed), the run is a no-op until the next day. A plugin branch left over from a closed PR on the
    reused daily is skipped, never overwritten. To get a fresh bump for a plugin,
    close (and delete the branch of) its old PR. `GH_REPO` is pinned to the fork, so `gh pr`
    cannot target `xai-org/plugin-marketplace`;
@@ -40,6 +40,9 @@ the runner's log is the validation record.
 Manual: `scripts/local-bump-runner.sh --dry-run` (no push, no PR) or
 `scripts/local-bump-runner.sh --only <plugin>`.
 
+If the machine is asleep at 07:00, launchd runs the job when it next wakes; if
+it was powered off, that day is skipped. Check the age of `.last`.
+
 ## Pull requests from contributors
 
 `Validate catalog` no longer runs on `pull_request` or `push`, so contributor
@@ -49,15 +52,14 @@ PRs get no automatic check either. Before merging any PR, run on its branch:
 python3 scripts/validate-catalog.py && python3 scripts/generate-plugin-index.py --check
 ```
 
-If the machine is off at 07:00, launchd runs the job when it next wakes; if it
-was powered off, that day is skipped. Check the age of `.last`.
-
 ## Timeouts
 
 The bump step is limited to 45 minutes (`PM_BUMP_TIMEOUT`), and each git or
-validate step to 10 minutes (`PM_STEP_TIMEOUT`). macOS has no timeout(1), so
-the runner uses Perl `alarm` there; a timed-out run exits 124/137/142 and is
-recorded as FAILED.
+validate step to 10 minutes (`PM_STEP_TIMEOUT`). Each step runs in its own
+process group with the lock fd closed, and the whole group is killed on
+timeout (timeout(1) on Linux; a Perl supervisor on macOS, which has no
+timeout(1)). A timed-out bump exits 124 (137 if it had to be killed), and that
+code is recorded in `.last`/`.FAILED`.
 
 ## Token scope (to do: needs Eric)
 
@@ -92,7 +94,9 @@ keeps using the SSH key, so for full scoping switch the runner clone to HTTPS. U
 `PM_SCRIPT_REF=<branch>` makes the runner fetch `scripts/` from that branch of
 the fork into its temp dir and run it against the clone's `main`
 (`BUMP_REPO_ROOT` points the script at the clone). The clone's worktree is not
-touched. Leave it unset for the scheduled job. Example (one plugin, real run):
+touched. Only `bump-plugin-shas.py` (and `plugin_catalog.py` it imports) come
+from the ref; `generate-plugin-index.py` and the validators still come from
+`main`. Leave it unset for the scheduled job. Example (one plugin, real run):
 
 ```
 PM_SCRIPT_REF=chore/gha-offload-local-bump ./scripts/local-bump-runner.sh --only octen

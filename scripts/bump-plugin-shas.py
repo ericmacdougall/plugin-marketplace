@@ -718,8 +718,9 @@ def main() -> int:
         start_ref = run(["git", "rev-parse", "HEAD"], check=True).stdout.strip()
 
     # Never let gh fall back to an `upstream` remote (this repo is a fork):
-    # outside Actions, require GH_REPO when any remote other than origin exists.
-    if not args.dry_run and not os.environ.get("GH_REPO") and os.environ.get("GITHUB_ACTIONS") != "true":
+    # outside Actions, require GH_REPO when any remote other than origin exists
+    # (dry runs too, since dedup queries open PRs).
+    if not os.environ.get("GH_REPO") and os.environ.get("GITHUB_ACTIONS") != "true":
         remotes = (run(["git", "remote"], check=True).stdout or "").split()
         if remotes != ["origin"]:
             print(
@@ -770,6 +771,20 @@ def main() -> int:
         candidates, open_daily = dedup_against_open_prs(
             candidates, skipped, list_open_bump_prs(), base_branch
         )
+        if open_daily is not None and candidates:
+            # Only stack onto an open daily that already contains main;
+            # otherwise its catalog is stale, so open a fresh daily instead.
+            run(["git", "fetch", "origin", open_daily["headRefName"]], check=True)
+            contains_main = run(
+                ["git", "merge-base", "--is-ancestor", start_ref, "FETCH_HEAD"],
+                check=False,
+            ).returncode == 0
+            if not contains_main:
+                print(
+                    f"open daily {open_daily['headRefName']} is behind main; "
+                    "not reusing it (opening a new daily instead)"
+                )
+                open_daily = None
         if open_daily is not None and candidates:
             reuse_daily = open_daily
             daily_branch = open_daily["headRefName"]

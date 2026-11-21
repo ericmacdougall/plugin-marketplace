@@ -8,7 +8,9 @@
 #   2. syncs a dedicated clone to origin/main (never a dev checkout);
 #   3. runs scripts/bump-plugin-shas.py with --github-output <temp file>.
 #      It NEVER passes --force and clears FORCE_BUMP, so it never force-pushes:
-#      if today's bump/daily-* branch already exists the bump is a no-op;
+#      plugins with an open bump PR (any day) are skipped and an open
+#      bump/daily-* PR is reused as the base (cross-day dedup); if today's
+#      daily branch exists without an open PR, the bump is a no-op;
 #   4. instead of `gh workflow run validate-catalog.yml`, checks out every
 #      non-skipped branch from pr-urls (and main) and runs
 #      `validate-catalog.py` and `generate-plugin-index.py --check` locally;
@@ -23,7 +25,7 @@
 # Overlap: a run that finds the lock held exits 75 and writes
 #   $GHA_OFFLOAD_HOME/status/plugin-marketplace-bump.skipped
 # (also check the age of .last: it is not updated if the host is off).
-# Env:   PM_REPO (default ericmacdougall/plugin-marketplace)
+# Env:   PM_REPO (only ericmacdougall/* is accepted; default ericmacdougall/plugin-marketplace)
 #        PM_CLONE (default $GHA_OFFLOAD_HOME/runners/plugin-marketplace)
 #        GHA_OFFLOAD_HOME (default ~/gha-offload)
 set -euo pipefail
@@ -31,6 +33,10 @@ export PATH="/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:$PATH"
 export GHA_OFFLOAD_HOME="${GHA_OFFLOAD_HOME:-$HOME/gha-offload}"
 name=plugin-marketplace-bump
 repo="${PM_REPO:-ericmacdougall/plugin-marketplace}"
+case "$repo" in
+  ericmacdougall/*) ;;
+  *) echo "PM_REPO must be an ericmacdougall/* fork (got $repo); never upstream" >&2; exit 78 ;;
+esac
 clone="${PM_CLONE:-$GHA_OFFLOAD_HOME/runners/plugin-marketplace}"
 
 dry_run=0; only=""
@@ -88,19 +94,37 @@ finish() {
 trap finish EXIT
 
 # Bounded steps: a hung git/gh/python cannot hold the lock indefinitely.
-# timeout(1) on Linux/coreutils; otherwise Perl alarm (SIGALRM, exit 142).
+# Every child runs with fd 9 (the lock) closed, in its own process group, and
+# the whole group is killed on timeout: timeout(1) does that on Linux; on macOS
+# a small Perl supervisor does (TERM, then KILL after 30 s; exit 124).
 with_timeout() {
   local secs="$1"; shift
-  if command -v timeout >/dev/null 2>&1; then timeout --kill-after=60 "$secs" "$@"
-  elif command -v gtimeout >/dev/null 2>&1; then gtimeout --kill-after=60 "$secs" "$@"
-  else perl -e '$s = shift; alarm $s; exec @ARGV or die "exec: $!"' "$secs" "$@"; fi
+  if command -v timeout >/dev/null 2>&1; then timeout --kill-after=60 "$secs" "$@" 9>&-
+  elif command -v gtimeout >/dev/null 2>&1; then gtimeout --kill-after=60 "$secs" "$@" 9>&-
+  else
+    perl -e '
+      my $s = shift;
+      my $pid = fork() // die "fork: $!";
+      if ($pid == 0) { setpgrp(0, 0); exec @ARGV or die "exec: $!" }
+      setpgrp($pid, $pid);
+      local $SIG{ALRM} = sub {
+        print STDERR "timeout: killing process group $pid after ${s}s\n";
+        kill "TERM", -$pid;
+        for (1 .. 30) { waitpid($pid, 1); last unless kill(0, -$pid); sleep 1 }  # 1 = WNOHANG
+        kill "KILL", -$pid; waitpid($pid, 0); exit 124;
+      };
+      alarm $s;
+      waitpid($pid, 0);
+      exit($? & 127 ? 128 + ($? & 127) : $? >> 8);
+    ' "$secs" "$@" 9>&-
+  fi
 }
 bump_timeout="${PM_BUMP_TIMEOUT:-2700}"     # 45 min for discovery + pushes + PRs
 step_timeout="${PM_STEP_TIMEOUT:-600}"      # 10 min for any single git/validate step
 
 echo "=== $name start $(date -u +%FT%TZ) on $(hostname -s) dry_run=$dry_run only=${only:-<all>} ==="
 command -v gh >/dev/null || { echo "gh not found" >&2; exit 127; }
-gh auth status >/dev/null 2>&1 || { echo "gh is not logged in on this host" >&2; exit 77; }
+gh auth status -h github.com >/dev/null 2>&1 || { echo "gh is not logged in on this host" >&2; exit 77; }
 export GH_REPO="$repo"
 export GH_PROMPT_DISABLED=1
 unset FORCE_BUMP
@@ -116,7 +140,7 @@ if [ "$(git remote)" != "origin" ]; then
   echo "runner clone must have only the 'origin' remote (found: $(git remote | tr '\n' ' '))" >&2; exit 78
 fi
 case "$(git remote get-url origin)" in
-  *"github.com/$repo"|*"github.com/$repo.git"|*"github.com:$repo.git") ;;
+  "https://github.com/$repo"|"https://github.com/$repo.git"|"git@github.com:$repo.git"|"ssh://git@github.com/$repo.git") ;;
   *) echo "origin is not $repo" >&2; exit 78 ;;
 esac
 with_timeout "$step_timeout" git fetch -q --prune origin
@@ -146,11 +170,11 @@ if [ -n "${PM_SCRIPT_REF:-}" ]; then
 fi
 echo "==> python3 -B $bump_script ${bump_args[*]}"
 set +e
-with_timeout "$bump_timeout" python3 -B "$bump_script" "${bump_args[@]}" 9>&-
+with_timeout "$bump_timeout" python3 -B "$bump_script" "${bump_args[@]}"
 bump_rc=$?
 set -e
 echo "bump-plugin-shas.py exit $bump_rc"
-case "$bump_rc" in 124|137|142) echo "!!! bump-plugin-shas.py timed out after ${bump_timeout}s" ;; esac
+case "$bump_rc" in 124|137) echo "!!! bump-plugin-shas.py timed out after ${bump_timeout}s" ;; esac
 
 # Branches to validate: main plus every non-skipped branch in pr-urls.
 pr_urls="$(sed -n 's/^pr-urls=//p' "$out" | tail -1)"
@@ -178,4 +202,6 @@ while IFS= read -r b; do [ -n "$b" ] && validate_ref "origin/$b"; done <<<"$bran
 git checkout -q -f main
 
 echo "summary: bump_rc=$bump_rc validate_failures=$val_fail branches_validated=$(echo "$branches" | grep -c . || true)"
-[ "$bump_rc" -eq 0 ] && [ "$val_fail" -eq 0 ]
+# Exit with the bump's own code (e.g. 124 = timed out) so .last/.FAILED show it.
+[ "$bump_rc" -ne 0 ] && exit "$bump_rc"
+[ "$val_fail" -eq 0 ]
