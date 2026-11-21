@@ -512,16 +512,16 @@ def dedup_against_open_prs(
     skipped: list[dict],
     open_prs: list[dict],
     base_branch: str,
-) -> tuple[list[dict], dict | None]:
+) -> tuple[list[dict], list[dict]]:
     """Cross-day dedup.
 
     - A plugin that already has an open bump PR (from any day) is skipped:
       the existing PR is the one to review, close or merge.
-    - The oldest open daily PR into `base_branch` is returned so new bumps
-      stack onto it instead of opening another daily base.
+    - Open daily PRs into `base_branch` are returned oldest-first so the
+      caller can reuse the oldest one that already contains `main`.
     """
     open_plugins: dict[str, str] = {}
-    open_daily: dict | None = None
+    open_dailies: list[dict] = []
     for pr in sorted(open_prs, key=lambda p: p.get("createdAt", "")):
         head = pr.get("headRefName", "")
         m = PLUGIN_BRANCH_RE.match(head)
@@ -529,8 +529,7 @@ def dedup_against_open_prs(
             open_plugins.setdefault(m.group("name"), pr.get("url", ""))
             continue
         if DAILY_BRANCH_RE.match(head) and pr.get("baseRefName") == base_branch:
-            if open_daily is None:
-                open_daily = pr
+            open_dailies.append(pr)
     kept: list[dict] = []
     for c in candidates:
         url = open_plugins.get(c["name"])
@@ -540,7 +539,7 @@ def dedup_against_open_prs(
             )
         else:
             kept.append(c)
-    return kept, open_daily
+    return kept, open_dailies
 
 
 def discover_candidates(
@@ -768,23 +767,45 @@ def main() -> int:
     # Cross-day dedup (skipped with --force, which rebuilds today's stack).
     reuse_daily: dict | None = None
     if not force:
-        candidates, open_daily = dedup_against_open_prs(
+        candidates, open_dailies = dedup_against_open_prs(
             candidates, skipped, list_open_bump_prs(), base_branch
         )
-        if open_daily is not None and candidates:
-            # Only stack onto an open daily that already contains main;
-            # otherwise its catalog is stale, so open a fresh daily instead.
-            run(["git", "fetch", "origin", open_daily["headRefName"]], check=True)
-            contains_main = run(
-                ["git", "merge-base", "--is-ancestor", start_ref, "FETCH_HEAD"],
-                check=False,
-            ).returncode == 0
-            if not contains_main:
-                print(
-                    f"open daily {open_daily['headRefName']} is behind main; "
-                    "not reusing it (opening a new daily instead)"
+        open_daily: dict | None = None
+        if candidates:
+            # Reuse the oldest open daily that already contains main.
+            # A daily that is behind main has a stale catalog; skip it and
+            # try the next, or open a fresh daily if none qualify.
+            for pr in open_dailies:
+                fetched = run(
+                    ["git", "fetch", "origin", pr["headRefName"]], check=False
                 )
-                open_daily = None
+                if fetched.returncode != 0:
+                    print(
+                        f"open daily {pr['headRefName']} could not be fetched "
+                        f"(rc={fetched.returncode}); not reusing it"
+                    )
+                    continue
+                mb = run(
+                    ["git", "merge-base", "--is-ancestor", start_ref, "FETCH_HEAD"],
+                    check=False,
+                )
+                if mb.returncode == 0:
+                    open_daily = pr
+                    break
+                if mb.returncode == 1:
+                    print(
+                        f"open daily {pr['headRefName']} is behind main; "
+                        "not reusing it"
+                    )
+                    continue
+                print(
+                    f"open daily {pr['headRefName']}: merge-base failed "
+                    f"(rc={mb.returncode}); not reusing it"
+                )
+            if open_daily is None and open_dailies:
+                print(
+                    "no open daily contains main; opening a new daily instead"
+                )
         if open_daily is not None and candidates:
             reuse_daily = open_daily
             daily_branch = open_daily["headRefName"]
