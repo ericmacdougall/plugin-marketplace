@@ -776,17 +776,31 @@ def main() -> int:
             # A daily that is behind main has a stale catalog; skip it and
             # try the next, or open a fresh daily if none qualify.
             for pr in open_dailies:
-                run(["git", "fetch", "origin", pr["headRefName"]], check=True)
-                contains_main = run(
+                fetched = run(
+                    ["git", "fetch", "origin", pr["headRefName"]], check=False
+                )
+                if fetched.returncode != 0:
+                    print(
+                        f"open daily {pr['headRefName']} could not be fetched "
+                        f"(rc={fetched.returncode}); not reusing it"
+                    )
+                    continue
+                mb = run(
                     ["git", "merge-base", "--is-ancestor", start_ref, "FETCH_HEAD"],
                     check=False,
-                ).returncode == 0
-                if contains_main:
+                )
+                if mb.returncode == 0:
                     open_daily = pr
                     break
+                if mb.returncode == 1:
+                    print(
+                        f"open daily {pr['headRefName']} is behind main; "
+                        "not reusing it"
+                    )
+                    continue
                 print(
-                    f"open daily {pr['headRefName']} is behind main; "
-                    "not reusing it"
+                    f"open daily {pr['headRefName']}: merge-base failed "
+                    f"(rc={mb.returncode}); not reusing it"
                 )
             if open_daily is None and open_dailies:
                 print(

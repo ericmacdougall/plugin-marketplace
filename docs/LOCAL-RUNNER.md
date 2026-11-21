@@ -21,8 +21,8 @@ login). launchd runs an installed copy, `~/gha-offload/bin/run-plugin-marketplac
    `FORCE_BUMP`, so it never force-pushes.
    **Cross-day dedup:** a plugin that already has an open bump PR (any day) is
    skipped, and the oldest open `bump/daily-*` PR that already contains `main` is
-   reused as the base (if none do, a fresh daily is opened), so unmerged stacks
-   never multiply. If today's daily branch exists with no open PR (merged or
+   reused as the base (if none do, a fresh daily is opened). Stale daily PRs
+   that do not contain `main` are left open; they are not reused. If today's daily branch already exists and is not reused, or exists with no open PR (merged or
    closed), the run is a no-op until the next day. A plugin branch left over from a closed PR on the
    reused daily is skipped, never overwritten. To get a fresh bump for a plugin,
    close (and delete the branch of) its old PR. `GH_REPO` is pinned to the fork, so `gh pr`
@@ -33,8 +33,11 @@ login). launchd runs an installed copy, `~/gha-offload/bin/run-plugin-marketplac
 5. logs to `~/gha-offload/logs/plugin-marketplace-bump-<UTC stamp>.log` and
    writes `~/gha-offload/status/plugin-marketplace-bump.last` (and `.FAILED`
    while failing, including early exits 74 and 78 before the log is opened).
-   The runner-clone check uses `pwd -P` so a symlinked path cannot sneak a
-   checkout in from outside `~/gha-offload/runners`. Nothing is sent anywhere.
+   The runner-clone check uses `pwd -P` on the clone itself (when it exists)
+   so a symlink under `runners/` to an outside checkout is rejected; a
+   basename of `.` or `..` is also rejected. Early 74/78 failures write
+   `.FAILED` only (they do not overwrite `.last`, because they can run
+   without the lock). Nothing is sent anywhere.
 
 Because no workflow runs on the bump PRs, the PRs carry no `validate` check;
 the runner's log is the validation record.

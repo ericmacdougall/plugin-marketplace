@@ -37,10 +37,12 @@ name=plugin-marketplace-bump
 fail_early() {
   local rc="$1"; shift
   local now; now="$(date -u +%FT%TZ)"
-  mkdir -p "$GHA_OFFLOAD_HOME/status"
-  echo "FAIL $rc $now early" >"$GHA_OFFLOAD_HOME/status/$name.last"
-  echo "FAIL $rc $now early" >"$GHA_OFFLOAD_HOME/status/$name.FAILED"
+  # Print first: under set -e a later mkdir/redirect failure must not swallow the message
+  # or replace the intended 74/78. Do not overwrite .last: this path can run without
+  # the lock and must not stamp FAIL over a healthy or in-flight scheduled run.
   echo "$*" >&2
+  mkdir -p "$GHA_OFFLOAD_HOME/status" || true
+  echo "FAIL $rc $now early" >"$GHA_OFFLOAD_HOME/status/$name.FAILED" || true
   echo "=== $name FAILED rc=$rc $now (early); marker $GHA_OFFLOAD_HOME/status/$name.FAILED ===" >&2
   exit "$rc"
 }
@@ -66,9 +68,23 @@ done
 
 mkdir -p "$GHA_OFFLOAD_HOME"/{logs,locks,status,runners}
 # Refuse to hard-reset anything but a dedicated runner clone.
-case "$(cd "$(dirname "$clone")" 2>/dev/null && pwd -P)/$(basename "$clone")" in
-  "$(cd "$GHA_OFFLOAD_HOME/runners" && pwd -P)"/*) ;;
-  *) fail_early 78 "PM_CLONE must live under $GHA_OFFLOAD_HOME/runners (got $clone)" ;;
+# Resolve the clone itself with pwd -P when it exists (a symlink under
+# runners/ to an outside checkout must not pass). Reject a basename of
+# . or .., and refuse a path that is runners itself (e.g. runners/x/..).
+base="$(basename -- "$clone")"
+case "$base" in
+  .|..|"") fail_early 78 "PM_CLONE basename must be a directory name (got $clone)" ;;
+esac
+runners_phys="$(cd "$GHA_OFFLOAD_HOME/runners" && pwd -P)" || fail_early 78 "cannot resolve $GHA_OFFLOAD_HOME/runners"
+if [ -L "$clone" ] || [ -e "$clone" ]; then
+  clone_phys="$(cd "$clone" 2>/dev/null && pwd -P)" || fail_early 78 "PM_CLONE is not a directory (got $clone)"
+else
+  parent_phys="$(cd "$(dirname "$clone")" 2>/dev/null && pwd -P)" || fail_early 78 "PM_CLONE parent is not a directory (got $clone)"
+  clone_phys="$parent_phys/$base"
+fi
+case "$clone_phys" in
+  "$runners_phys"/*) ;;
+  *) fail_early 78 "PM_CLONE must live under $GHA_OFFLOAD_HOME/runners (got $clone -> $clone_phys)" ;;
 esac
 skipped() {  # an overlapping run leaves a trace instead of vanishing
   echo "SKIP 75 $(date -u +%FT%TZ) previous run still holds the lock" >"$GHA_OFFLOAD_HOME/status/$name.skipped"
