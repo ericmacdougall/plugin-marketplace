@@ -87,6 +87,17 @@ finish() {
 }
 trap finish EXIT
 
+# Bounded steps: a hung git/gh/python cannot hold the lock indefinitely.
+# timeout(1) on Linux/coreutils; otherwise Perl alarm (SIGALRM, exit 142).
+with_timeout() {
+  local secs="$1"; shift
+  if command -v timeout >/dev/null 2>&1; then timeout --kill-after=60 "$secs" "$@"
+  elif command -v gtimeout >/dev/null 2>&1; then gtimeout --kill-after=60 "$secs" "$@"
+  else perl -e '$s = shift; alarm $s; exec @ARGV or die "exec: $!"' "$secs" "$@"; fi
+}
+bump_timeout="${PM_BUMP_TIMEOUT:-2700}"     # 45 min for discovery + pushes + PRs
+step_timeout="${PM_STEP_TIMEOUT:-600}"      # 10 min for any single git/validate step
+
 echo "=== $name start $(date -u +%FT%TZ) on $(hostname -s) dry_run=$dry_run only=${only:-<all>} ==="
 command -v gh >/dev/null || { echo "gh not found" >&2; exit 127; }
 gh auth status >/dev/null 2>&1 || { echo "gh is not logged in on this host" >&2; exit 77; }
@@ -97,7 +108,7 @@ export PYTHONDONTWRITEBYTECODE=1
 
 # Dedicated clone with a single remote (the fork); never an upstream remote.
 if [ ! -d "$clone/.git" ]; then
-  gh repo clone "$repo" "$clone" -- -q
+  with_timeout "$step_timeout" gh repo clone "$repo" "$clone" -- -q
   git -C "$clone" remote remove upstream 2>/dev/null || true
 fi
 cd "$clone"
@@ -108,7 +119,7 @@ case "$(git remote get-url origin)" in
   *"github.com/$repo"|*"github.com/$repo.git"|*"github.com:$repo.git") ;;
   *) echo "origin is not $repo" >&2; exit 78 ;;
 esac
-git fetch -q --prune origin
+with_timeout "$step_timeout" git fetch -q --prune origin
 git reset -q --hard
 git clean -q -ffdx
 git checkout -q -f -B main origin/main
@@ -119,12 +130,27 @@ echo "main at $(git rev-parse HEAD)"
 out="$tmp/github-output"; : >"$out"
 bump_args=(--only "$only" --base-branch main --github-output "$out")
 [ "$dry_run" = 1 ] && bump_args+=(--dry-run)
-echo "==> python3 -B scripts/bump-plugin-shas.py ${bump_args[*]}"
+# PM_SCRIPT_REF (testing only): run scripts/ from another branch of the fork
+# against main, without touching the clone's worktree. Default: main's scripts.
+bump_script="scripts/bump-plugin-shas.py"
+if [ -n "${PM_SCRIPT_REF:-}" ]; then
+  case "$PM_SCRIPT_REF" in
+    *[!A-Za-z0-9._/-]*|-*|*..*) echo "invalid PM_SCRIPT_REF" >&2; exit 64 ;;
+  esac
+  with_timeout "$step_timeout" git fetch -q origin "refs/heads/$PM_SCRIPT_REF"
+  mkdir -p "$tmp/script-ref"
+  git archive FETCH_HEAD scripts | tar -x -C "$tmp/script-ref"
+  bump_script="$tmp/script-ref/scripts/bump-plugin-shas.py"
+  export BUMP_REPO_ROOT="$clone"
+  echo "using scripts/ from origin/$PM_SCRIPT_REF at $(git rev-parse FETCH_HEAD)"
+fi
+echo "==> python3 -B $bump_script ${bump_args[*]}"
 set +e
-python3 -B scripts/bump-plugin-shas.py "${bump_args[@]}" 9>&-
+with_timeout "$bump_timeout" python3 -B "$bump_script" "${bump_args[@]}" 9>&-
 bump_rc=$?
 set -e
 echo "bump-plugin-shas.py exit $bump_rc"
+case "$bump_rc" in 124|137|142) echo "!!! bump-plugin-shas.py timed out after ${bump_timeout}s" ;; esac
 
 # Branches to validate: main plus every non-skipped branch in pr-urls.
 pr_urls="$(sed -n 's/^pr-urls=//p' "$out" | tail -1)"
@@ -140,13 +166,13 @@ validate_ref() {
     echo "validate $ref: FAIL (ref missing)"; val_fail=1; return 0
   fi
   git clean -q -ffdx
-  if python3 -B scripts/validate-catalog.py && python3 -B scripts/generate-plugin-index.py --check; then
+  if with_timeout "$step_timeout" python3 -B scripts/validate-catalog.py && with_timeout "$step_timeout" python3 -B scripts/generate-plugin-index.py --check; then
     echo "validate $ref: PASS"
   else
     echo "validate $ref: FAIL"; val_fail=1
   fi
 }
-git fetch -q --prune origin
+with_timeout "$step_timeout" git fetch -q --prune origin
 validate_ref origin/main
 while IFS= read -r b; do [ -n "$b" ] && validate_ref "origin/$b"; done <<<"$branches"
 git checkout -q -f main

@@ -48,7 +48,8 @@ try:
 except ImportError:  # pragma: no cover
     ZoneInfo = None  # type: ignore[misc, assignment]
 
-REPO_ROOT = Path(__file__).resolve().parent.parent
+# BUMP_REPO_ROOT lets the local runner test scripts from another branch.
+REPO_ROOT = Path(os.environ.get("BUMP_REPO_ROOT") or Path(__file__).resolve().parent.parent)
 CATALOG_PATH = Path(".grok-plugin/marketplace.json")
 INDEX_PATH = Path(".grok-plugin/plugin-index.json")
 INDEX_SCRIPT = Path("scripts/generate-plugin-index.py")
@@ -478,6 +479,70 @@ def apply_plugin_bump(
     )
 
 
+PLUGIN_BRANCH_RE = re.compile(r"^bump/\d{4}-\d{2}-\d{2}/(?P<name>.+)$")
+DAILY_BRANCH_RE = re.compile(r"^bump/daily-(?P<day>\d{4}-\d{2}-\d{2})$")
+
+
+def list_open_bump_prs() -> list[dict]:
+    """Open PRs whose head is a bump/* branch (any day).
+
+    Raises on `gh` failure: dedup must never silently treat an API error as
+    "no open PRs" (that would re-open duplicates every day).
+    """
+    result = run(
+        [
+            "gh",
+            "pr",
+            "list",
+            "--state",
+            "open",
+            "--limit",
+            "500",
+            "--json",
+            "number,url,headRefName,baseRefName,createdAt",
+        ],
+        check=True,
+    )
+    prs = json.loads(result.stdout or "[]")
+    return [p for p in prs if str(p.get("headRefName", "")).startswith("bump/")]
+
+
+def dedup_against_open_prs(
+    candidates: list[dict],
+    skipped: list[dict],
+    open_prs: list[dict],
+    base_branch: str,
+) -> tuple[list[dict], dict | None]:
+    """Cross-day dedup.
+
+    - A plugin that already has an open bump PR (from any day) is skipped:
+      the existing PR is the one to review, close or merge.
+    - The oldest open daily PR into `base_branch` is returned so new bumps
+      stack onto it instead of opening another daily base.
+    """
+    open_plugins: dict[str, str] = {}
+    open_daily: dict | None = None
+    for pr in sorted(open_prs, key=lambda p: p.get("createdAt", "")):
+        head = pr.get("headRefName", "")
+        m = PLUGIN_BRANCH_RE.match(head)
+        if m:
+            open_plugins.setdefault(m.group("name"), pr.get("url", ""))
+            continue
+        if DAILY_BRANCH_RE.match(head) and pr.get("baseRefName") == base_branch:
+            if open_daily is None:
+                open_daily = pr
+    kept: list[dict] = []
+    for c in candidates:
+        url = open_plugins.get(c["name"])
+        if url:
+            skipped.append(
+                {"name": c["name"], "reason": f"open bump PR already exists: {url}"}
+            )
+        else:
+            kept.append(c)
+    return kept, open_daily
+
+
 def discover_candidates(
     *,
     only: str,
@@ -652,6 +717,19 @@ def main() -> int:
     if start_ref == "HEAD":
         start_ref = run(["git", "rev-parse", "HEAD"], check=True).stdout.strip()
 
+    # Never let gh fall back to an `upstream` remote (this repo is a fork):
+    # outside Actions, require GH_REPO when any remote other than origin exists.
+    if not args.dry_run and not os.environ.get("GH_REPO") and os.environ.get("GITHUB_ACTIONS") != "true":
+        remotes = (run(["git", "remote"], check=True).stdout or "").split()
+        if remotes != ["origin"]:
+            print(
+                "ERROR: set GH_REPO=<owner>/<repo> (remotes: "
+                f"{', '.join(remotes)}); refusing to guess where PRs go",
+                file=sys.stderr,
+            )
+            write_github_output(args.github_output, [], 0)
+            return 1
+
     # Discover and bump from the same revision the stack will cut from.
     # workflow_dispatch on a non-default ref would otherwise see a different
     # catalog than origin/<base>.
@@ -686,6 +764,21 @@ def main() -> int:
 
     candidates, skipped = discover_candidates(only=only, freeze=freeze)
 
+    # Cross-day dedup (skipped with --force, which rebuilds today's stack).
+    reuse_daily: dict | None = None
+    if not force:
+        candidates, open_daily = dedup_against_open_prs(
+            candidates, skipped, list_open_bump_prs(), base_branch
+        )
+        if open_daily is not None and candidates:
+            reuse_daily = open_daily
+            daily_branch = open_daily["headRefName"]
+            day = DAILY_BRANCH_RE.match(daily_branch).group("day")
+            print(
+                f"reusing open daily base {daily_branch} ({open_daily.get('url', '')}) "
+                "instead of opening a new one"
+            )
+
     print(f"day={day} daily_branch={daily_branch} force={force}")
     print(f"candidates={len(candidates)} skipped={len(skipped)}")
     for s in skipped:
@@ -702,8 +795,9 @@ def main() -> int:
 
     # Gate on remote branch existence (not open PR). Merged/closed daily still
     # leaves the ref around unless deleted, so same-day re-runs stay no-ops.
+    # (An open daily PR is reused above instead.)
     daily_exists = remote_branch_exists(daily_branch)
-    if daily_exists and not force:
+    if daily_exists and not force and reuse_daily is None:
         print(
             f"remote branch {daily_branch} already exists; no-op "
             "(pass --force to rebuild and force-push this day's stack)"
@@ -727,14 +821,24 @@ def main() -> int:
         print(f"remote branch {daily_branch} exists; --force rebuild from main")
 
     try:
-        daily_pr, daily_sha = open_daily_base(
-            daily_branch=daily_branch,
-            main_branch=base_branch,
-            day=day,
-            run_url=run_url,
-            force=force or daily_exists,
-            dry_run=args.dry_run,
-        )
+        if reuse_daily is not None:
+            daily_pr = reuse_daily.get("url") or None
+            if args.dry_run:
+                daily_sha = "0" * 40
+            else:
+                run(["git", "fetch", "origin", daily_branch], check=True)
+                daily_sha = run(
+                    ["git", "rev-parse", "FETCH_HEAD"], check=True
+                ).stdout.strip()
+        else:
+            daily_pr, daily_sha = open_daily_base(
+                daily_branch=daily_branch,
+                main_branch=base_branch,
+                day=day,
+                run_url=run_url,
+                force=force or daily_exists,
+                dry_run=args.dry_run,
+            )
         # First create: force=False for push. But if daily_exists we must force.
         # open_daily_base already got force=force or daily_exists.
         pr_urls.append(
@@ -748,10 +852,21 @@ def main() -> int:
 
         # Plugin pushes: force when rebuilding the day so existing plugin
         # branches are rewritten onto the new daily tip.
-        plugin_force = force or daily_exists
+        plugin_force = force or (daily_exists and reuse_daily is None)
 
         for c in candidates:
             plugin_branch = f"bump/{day}/{c['name']}"
+            if (
+                reuse_daily is not None
+                and not args.dry_run
+                and remote_branch_exists(plugin_branch)
+            ):
+                # Left over from a closed PR; never overwrite it (no force).
+                skipped.append(
+                    {"name": c["name"], "reason": f"branch {plugin_branch} exists without an open PR"}
+                )
+                print(f"  skip {c['name']}: branch {plugin_branch} exists without an open PR")
+                continue
             print(
                 f"bump {c['name']}: {c['old_version']} -> {c['new_version']} "
                 f"({c['old_sha'][:7]} -> {c['new_sha'][:7]}) "
@@ -792,7 +907,8 @@ def main() -> int:
         if not args.dry_run:
             run(["git", "checkout", "-f", start_ref], check=False)
 
-    if not args.dry_run and daily_pr and len(pr_urls) > 1:
+    # A reused daily keeps its body (it lists PRs from earlier runs).
+    if not args.dry_run and daily_pr and len(pr_urls) > 1 and reuse_daily is None:
         child_lines = [
             f"- `{e['branch']}` ({e['name']}): {e['pr_url'] or 'opened'}"
             for e in pr_urls
