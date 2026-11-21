@@ -32,10 +32,22 @@ set -euo pipefail
 export PATH="/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:$PATH"
 export GHA_OFFLOAD_HOME="${GHA_OFFLOAD_HOME:-$HOME/gha-offload}"
 name=plugin-marketplace-bump
+# Exits 74/78 can happen before the log + EXIT trap exist; still leave a
+# .FAILED marker the fleet can poll.
+fail_early() {
+  local rc="$1"; shift
+  local now; now="$(date -u +%FT%TZ)"
+  mkdir -p "$GHA_OFFLOAD_HOME/status"
+  echo "FAIL $rc $now early" >"$GHA_OFFLOAD_HOME/status/$name.last"
+  echo "FAIL $rc $now early" >"$GHA_OFFLOAD_HOME/status/$name.FAILED"
+  echo "$*" >&2
+  echo "=== $name FAILED rc=$rc $now (early); marker $GHA_OFFLOAD_HOME/status/$name.FAILED ===" >&2
+  exit "$rc"
+}
 repo="${PM_REPO:-ericmacdougall/plugin-marketplace}"
 case "$repo" in
   ericmacdougall/*) ;;
-  *) echo "PM_REPO must be an ericmacdougall/* fork (got $repo); never upstream" >&2; exit 78 ;;
+  *) fail_early 78 "PM_REPO must be an ericmacdougall/* fork (got $repo); never upstream" ;;
 esac
 clone="${PM_CLONE:-$GHA_OFFLOAD_HOME/runners/plugin-marketplace}"
 
@@ -54,9 +66,9 @@ done
 
 mkdir -p "$GHA_OFFLOAD_HOME"/{logs,locks,status,runners}
 # Refuse to hard-reset anything but a dedicated runner clone.
-case "$(cd "$(dirname "$clone")" 2>/dev/null && pwd)/$(basename "$clone")" in
-  "$(cd "$GHA_OFFLOAD_HOME/runners" && pwd)"/*) ;;
-  *) echo "PM_CLONE must live under $GHA_OFFLOAD_HOME/runners (got $clone)" >&2; exit 78 ;;
+case "$(cd "$(dirname "$clone")" 2>/dev/null && pwd -P)/$(basename "$clone")" in
+  "$(cd "$GHA_OFFLOAD_HOME/runners" && pwd -P)"/*) ;;
+  *) fail_early 78 "PM_CLONE must live under $GHA_OFFLOAD_HOME/runners (got $clone)" ;;
 esac
 skipped() {  # an overlapping run leaves a trace instead of vanishing
   echo "SKIP 75 $(date -u +%FT%TZ) previous run still holds the lock" >"$GHA_OFFLOAD_HOME/status/$name.skipped"
@@ -67,7 +79,7 @@ if command -v flock >/dev/null 2>&1; then
   flock -n 9 || skipped
 else
   perl -MFcntl=:flock -e 'open(my $fh, ">&=", 9) or die "fd9: $!"; flock($fh, LOCK_EX|LOCK_NB) or exit 1' && lrc=0 || lrc=$?
-  case $lrc in 0) ;; 1) skipped ;; *) echo "lock helper failed" >&2; exit 74 ;; esac
+  case $lrc in 0) ;; 1) skipped ;; *) fail_early 74 "lock helper failed" ;; esac
 fi
 rm -f "$GHA_OFFLOAD_HOME/status/$name.skipped"
 
