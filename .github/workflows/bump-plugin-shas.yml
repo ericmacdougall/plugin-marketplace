@@ -21,12 +21,12 @@ name: Bump plugin SHAs
 # bump branch we re-dispatch validate-catalog.yml so the required `validate`
 # check can go green on the daily → main PR (and on stack tips).
 #
-# Runs daily at 7am Pacific (15:00 UTC) and on workflow_dispatch.
+# Manual (workflow_dispatch) only. The daily run happens off Actions via
+# scripts/local-bump-runner.sh (Mac-2 launchd, 07:00 local), which runs the
+# same bump script and then validates each branch locally instead of
+# dispatching validate-catalog.yml. See docs/LOCAL-RUNNER.md.
 
 on:
-  schedule:
-    # 7am Pacific: 15:00 UTC (7am PST / 8am PDT). GitHub cron is UTC-only.
-    - cron: "0 15 * * *"
   workflow_dispatch:
     inputs:
       plugin:
@@ -50,8 +50,10 @@ concurrency:
 
 jobs:
   bump:
-    # IP-allowlisted org runners (hosted ubuntu-latest cannot push branches).
-    runs-on: ubuntu-latest-m
+    # `ubuntu-latest-m` (an org runner label) does not exist on this personal
+    # account, so no run was ever scheduled. Hosted runners can push with the
+    # default GITHUB_TOKEN given the contents/pull-requests permissions above.
+    runs-on: ubuntu-latest
     timeout-minutes: 60
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1

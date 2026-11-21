@@ -32,18 +32,21 @@ For the catalog schema, source types, and SHA pinning mechanics, read the [READM
    ```bash
    python3 scripts/generate-plugin-index.py
    ```
-5. **Validate locally** — this is exactly what CI runs:
+5. **Validate locally** (required). In this fork, GitHub Actions does not run on pull requests, because
+   `validate-catalog.yml` is manual-only and no Actions minutes are available. These two commands are the whole check,
+   and a reviewer re-runs them before merging:
    ```bash
    python3 scripts/validate-catalog.py
    python3 scripts/generate-plugin-index.py --check
    ```
-6. **Open the PR.** Fill in the template, then wait for CI + code-owner review.
+6. **Open the PR.** Fill in the template, say in the description that both commands passed, then wait for
+   code-owner review. There is no automatic CI status on the PR.
 
 ## Requirements checklist
 
 - [ ] One entry added to `.grok-plugin/marketplace.json`, valid JSON, `name` in kebab-case and unique.
 - [ ] Remote sources pin a full 40-char lowercase commit `sha`; the commit is public and reachable.
-- [ ] `.grok-plugin/plugin-index.json` regenerated and committed (CI fails if stale).
+- [ ] `.grok-plugin/plugin-index.json` regenerated and committed (`generate-plugin-index.py --check` fails if stale).
 - [ ] A `homepage` and a clear `description`; brand-scoped `keywords`/`domains` (not generic terms — they power the plugin CTA) and a `category` where it helps discovery.
 - [ ] Local plugins include a `README.md` and a valid `.grok-plugin/plugin.json` manifest (`.claude-plugin/plugin.json` is also accepted for Claude-ecosystem plugins).
 - [ ] The plugin is licensed and the license is stated.
@@ -111,4 +114,4 @@ Every PR gets a pass on these dimensions, so it helps to self-check them first:
 ## Questions
 
 Open an issue, or leave a comment on your PR. We aim to do a first review pass quickly — a clean,
-self-checked submission (CI green, index regenerated, official source) is the fastest path to merge.
+self-checked submission (both local checks pass, index regenerated, official source) is the fastest path to merge.

@@ -16,7 +16,8 @@ What is in the repository:
   LSP servers, so a client can show contents before install;
 - Python scripts that validate SHA pins, regenerate and check the index, and open daily pull requests that advance
   pins when a plugin's version changes;
-- GitHub Actions that run the validation on every pull request and the bump job on a daily schedule.
+- GitHub Actions workflows for validation and the bump job, now manual (`workflow_dispatch`) only; the daily bump and the
+  validation run locally through `scripts/local-bump-runner.sh` (see [docs/LOCAL-RUNNER.md](docs/LOCAL-RUNNER.md)).
 
 See [docs/architecture.md](docs/architecture.md) for how these parts connect, and [CONTRIBUTING.md](CONTRIBUTING.md)
 for how to submit a plugin.

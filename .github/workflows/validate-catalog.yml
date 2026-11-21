@@ -1,12 +1,10 @@
 name: Validate catalog
 
+# Manual (workflow_dispatch) only: no Actions minutes on this account. Run the
+# same two checks locally before pushing:
+#   python3 scripts/validate-catalog.py && python3 scripts/generate-plugin-index.py --check
+# scripts/local-bump-runner.sh runs them on main and on every bump branch.
 on:
-  pull_request:
-  push:
-    branches: [main]
-  # Bump-plugin-shas opens PRs with GITHUB_TOKEN, which does not trigger
-  # on:pull_request. That workflow re-dispatches this one against each
-  # bump/* branch so the required `validate` check can still run.
   workflow_dispatch:
 
 permissions:
