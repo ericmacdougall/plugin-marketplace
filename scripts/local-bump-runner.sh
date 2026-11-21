@@ -20,6 +20,9 @@
 # pinned to the fork so `gh pr` can never target the upstream repository.
 #
 # Usage: scripts/local-bump-runner.sh [--dry-run] [--only NAME]
+# Overlap: a run that finds the lock held exits 75 and writes
+#   $GHA_OFFLOAD_HOME/status/plugin-marketplace-bump.skipped
+# (also check the age of .last: it is not updated if the host is off).
 # Env:   PM_REPO (default ericmacdougall/plugin-marketplace)
 #        PM_CLONE (default $GHA_OFFLOAD_HOME/runners/plugin-marketplace)
 #        GHA_OFFLOAD_HOME (default ~/gha-offload)
@@ -34,7 +37,9 @@ dry_run=0; only=""
 while [ $# -gt 0 ]; do
   case "$1" in
     --dry-run) dry_run=1 ;;
-    --only) only="${2:-}"; shift ;;
+    --only)
+      [ $# -ge 2 ] && [ "${2#--}" = "$2" ] || { echo "--only needs a plugin name" >&2; exit 2; }
+      only="$2"; shift ;;
     --force) echo "--force is not supported by the local runner" >&2; exit 2 ;;
     *) echo "unknown argument: $1" >&2; exit 2 ;;
   esac
@@ -42,13 +47,23 @@ while [ $# -gt 0 ]; do
 done
 
 mkdir -p "$GHA_OFFLOAD_HOME"/{logs,locks,status,runners}
+# Refuse to hard-reset anything but a dedicated runner clone.
+case "$(cd "$(dirname "$clone")" 2>/dev/null && pwd)/$(basename "$clone")" in
+  "$(cd "$GHA_OFFLOAD_HOME/runners" && pwd)"/*) ;;
+  *) echo "PM_CLONE must live under $GHA_OFFLOAD_HOME/runners (got $clone)" >&2; exit 78 ;;
+esac
+skipped() {  # an overlapping run leaves a trace instead of vanishing
+  echo "SKIP 75 $(date -u +%FT%TZ) previous run still holds the lock" >"$GHA_OFFLOAD_HOME/status/$name.skipped"
+  echo "$name already running; skipping" >&2; exit 75
+}
 exec 9>"$GHA_OFFLOAD_HOME/locks/$name.lock"
 if command -v flock >/dev/null 2>&1; then
-  flock -n 9 || { echo "$name already running; skipping" >&2; exit 75; }
+  flock -n 9 || skipped
 else
-  perl -MFcntl=:flock -e 'open(my $fh, ">&=", 9) or die; flock($fh, LOCK_EX|LOCK_NB) or exit 1' \
-    || { echo "$name already running; skipping" >&2; exit 75; }
+  perl -MFcntl=:flock -e 'open(my $fh, ">&=", 9) or die "fd9: $!"; flock($fh, LOCK_EX|LOCK_NB) or exit 1' && lrc=0 || lrc=$?
+  case $lrc in 0) ;; 1) skipped ;; *) echo "lock helper failed" >&2; exit 74 ;; esac
 fi
+rm -f "$GHA_OFFLOAD_HOME/status/$name.skipped"
 
 stamp="$(date -u +%Y%m%dT%H%M%SZ)"
 log="$GHA_OFFLOAD_HOME/logs/$name-$stamp.log"
@@ -94,7 +109,9 @@ case "$(git remote get-url origin)" in
   *) echo "origin is not $repo" >&2; exit 78 ;;
 esac
 git fetch -q --prune origin
-git checkout -q -B main origin/main
+git reset -q --hard
+git clean -q -ffdx
+git checkout -q -f -B main origin/main
 git reset -q --hard origin/main
 git clean -q -ffdx
 echo "main at $(git rev-parse HEAD)"
@@ -104,7 +121,7 @@ bump_args=(--only "$only" --base-branch main --github-output "$out")
 [ "$dry_run" = 1 ] && bump_args+=(--dry-run)
 echo "==> python3 -B scripts/bump-plugin-shas.py ${bump_args[*]}"
 set +e
-python3 -B scripts/bump-plugin-shas.py "${bump_args[@]}"
+python3 -B scripts/bump-plugin-shas.py "${bump_args[@]}" 9>&-
 bump_rc=$?
 set -e
 echo "bump-plugin-shas.py exit $bump_rc"
@@ -119,7 +136,9 @@ val_fail=0
 validate_ref() {
   local ref="$1"
   echo "==> validate $ref"
-  git checkout -q --detach "$ref"
+  if ! git checkout -q -f --detach "$ref"; then
+    echo "validate $ref: FAIL (ref missing)"; val_fail=1; return 0
+  fi
   git clean -q -ffdx
   if python3 -B scripts/validate-catalog.py && python3 -B scripts/generate-plugin-index.py --check; then
     echo "validate $ref: PASS"
@@ -129,8 +148,8 @@ validate_ref() {
 }
 git fetch -q --prune origin
 validate_ref origin/main
-for b in $branches; do validate_ref "origin/$b"; done
-git checkout -q main
+while IFS= read -r b; do [ -n "$b" ] && validate_ref "origin/$b"; done <<<"$branches"
+git checkout -q -f main
 
 echo "summary: bump_rc=$bump_rc validate_failures=$val_fail branches_validated=$(echo "$branches" | grep -c . || true)"
 [ "$bump_rc" -eq 0 ] && [ "$val_fail" -eq 0 ]
