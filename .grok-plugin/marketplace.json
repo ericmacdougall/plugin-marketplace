@@ -154,7 +154,7 @@
       "source": {
         "source": "url",
         "url": "https://github.com/netlify/context-and-tools.git",
-        "sha": "b5894c0e1c16d924dd5b28546b11c2de650fce7e"
+        "sha": "b111e771432aecedc81782d64cac42530a9cd1eb"
       },
       "homepage": "https://github.com/netlify/context-and-tools",
       "keywords": ["netlify", "netlify deploy", "deploy to netlify"],
