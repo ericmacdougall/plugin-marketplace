@@ -247,8 +247,8 @@
       }
     },
     "cloudflare": {
-      "sha": "c430dd965cea3a8faf0ef035e3b3d73b38518081",
-      "version": "1.0.2",
+      "sha": "5108325ecceabc899c761e07aa617b09c02445ee",
+      "version": "1.0.4",
       "components": {
         "mcpServers": [
           {
@@ -266,8 +266,16 @@
             "description": "Build and troubleshoot Cloudflare Basin analytics workflows with Basin Pipelines, Basin Catalog, and Basin SQL. Use for…"
           },
           {
+            "name": "cf-cli",
+            "description": "Cloudflare's official cf CLI (beta) for the public Cloudflare API and Workers projects. Use for finding and running Clo…"
+          },
+          {
             "name": "cloudflare",
             "description": "Discover and choose Cloudflare products for apps, APIs, AI agents, storage, networking, and security. Use for architect…"
+          },
+          {
+            "name": "cloudflare-app-bootstrap",
+            "description": "Get a Cloudflare Workers app to a working local request by connecting its bindings, secrets, and initial data, then ver…"
           },
           {
             "name": "cloudflare-email-service",
@@ -284,6 +292,14 @@
           {
             "name": "durable-objects",
             "description": "Build, debug, or review Cloudflare Durable Objects code for persistent state and coordination."
+          },
+          {
+            "name": "frameworks-on-cloudflare",
+            "description": "Build, migrate, and deploy web-framework applications on Cloudflare Workers. Use when a framework project such as Astro…"
+          },
+          {
+            "name": "gateway-workers",
+            "description": "Build, debug, or review Cloudflare Workers invoked by the Forward action in Gateway HTTP policies, including the Gatewa…"
           },
           {
             "name": "k2",
@@ -318,12 +334,16 @@
             "description": "Cloudflare Workers best practices for production applications. Use when writing, reviewing, or configuring Workers."
           },
           {
+            "name": "workers-development",
+            "description": "Run, inspect, and debug Cloudflare Workers during local development with cf dev, wrangler dev, or the Cloudflare Vite p…"
+          },
+          {
             "name": "workers-profiling",
             "description": "Profile or debug CPU usage and memory allocation in deployed Cloudflare Workers and Durable Objects. Then use this info…"
           },
           {
             "name": "wrangler",
-            "description": "Run or troubleshoot Wrangler CLI commands and configure Worker projects for local development, Previews, deployment, an…"
+            "description": "Run or troubleshoot Wrangler CLI commands in projects that have a wrangler.jsonc, wrangler.json, or wrangler.toml file,…"
           }
         ]
       }

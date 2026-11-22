@@ -50,7 +50,7 @@
       "source": {
         "source": "url",
         "url": "https://github.com/cloudflare/skills.git",
-        "sha": "c430dd965cea3a8faf0ef035e3b3d73b38518081"
+        "sha": "5108325ecceabc899c761e07aa617b09c02445ee"
       },
       "homepage": "https://github.com/cloudflare/skills",
       "keywords": ["cloudflare", "wrangler", "cloudflare workers"],
