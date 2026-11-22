@@ -1241,8 +1241,8 @@
       }
     },
     "stripe": {
-      "sha": "d9c9287ae870688bb3703b50e59ef1dd3692ffcb",
-      "version": "0.9.33",
+      "sha": "1bb486909cc36ce608181c2af62c4716ba9cd7c7",
+      "version": "0.13.2",
       "components": {
         "agents": [
           {
@@ -1288,6 +1288,10 @@
             "description": "Guides Stripe integration decisions across development and test environment planning (separate sandboxes vs the shared…"
           },
           {
+            "name": "stripe-bfcm-dashboard",
+            "description": "Builds a Black Friday and Cyber Monday (BFCM) season dashboard of payments, customers, and recurring revenue from the c…"
+          },
+          {
             "name": "stripe-directory",
             "description": "Identifies external providers, merchants, nonprofits, platforms, APIs, and software services, and resolves the document…"
           },
@@ -1296,16 +1300,16 @@
             "description": "Use when the user or agent needs to read, search, or look up Stripe documentation or API reference. Prefer this over cu…"
           },
           {
+            "name": "stripe-implementation-planner",
+            "description": "Plans Stripe product selection and integration architecture for an initial Stripe setup or a material expansion of an e…"
+          },
+          {
             "name": "stripe-pay",
             "description": "Helps users send funds to another Stripe business, transfer money to a Stripe Profile handle or network ID, or ask whet…"
           },
           {
             "name": "stripe-projects",
             "description": "Use when the user wants to provision infrastructure or third-party services using Stripe Projects. Triggers: \"I need a…"
-          },
-          {
-            "name": "upgrade-stripe",
-            "description": "Guide for upgrading Stripe API versions, webhook endpoints, server-side SDKs, Stripe.js, and mobile SDKs"
           }
         ]
       }
