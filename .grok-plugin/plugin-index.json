@@ -375,8 +375,8 @@
       }
     },
     "expo": {
-      "sha": "0d035556e37737de83199d8e623641bad7a7cced",
-      "version": "1.13.13",
+      "sha": "88d9bd79f3fa8452a778fbac65bae162c0b32ce4",
+      "version": "1.15.5",
       "components": {
         "mcpServers": [
           {
@@ -391,7 +391,7 @@
           },
           {
             "name": "eas-hosting",
-            "description": "Deploy Expo websites and Expo Router API routes to EAS Hosting - export the web bundle, run eas deploy for production a…"
+            "description": "Deploy Expo websites and Expo Router API routes to EAS Hosting - export the web bundle, deploy to production or PR prev…"
           },
           {
             "name": "eas-observe",
@@ -399,7 +399,7 @@
           },
           {
             "name": "eas-simulator",
-            "description": "Run and control a user's app on a remote iOS/Android simulator hosted on EAS cloud. Read before running any `eas simula…"
+            "description": "Run and control a user's app on a remote iOS/Android simulator with Expo Simulators (also called EAS Simulator). Read b…"
           },
           {
             "name": "eas-update",
@@ -427,11 +427,11 @@
           },
           {
             "name": "expo-data-fetching",
-            "description": "Use when implementing or debugging ANY network request, API call, or data fetching. Covers fetch API, React Query, SWR,…"
+            "description": "Implement or debug data fetching in Expo apps. Use for fetch API calls, React Query, SWR, authenticated requests, cachi…"
           },
           {
             "name": "expo-design-system",
-            "description": "Build and maintain a design system inside an Expo app - a reusable theme of design tokens (color, spacing, typography,…"
+            "description": "Create or extend an Expo app's theme, design tokens, and reusable component conventions. Use for inconsistent styling,…"
           },
           {
             "name": "expo-dev-client",
@@ -455,7 +455,7 @@
           },
           {
             "name": "expo-overview",
-            "description": "Entry point and router for every Expo or EAS task. Load this skill first — before writing code and before choosing anot…"
+            "description": "Entry point for Expo and EAS tasks. Load first when the request mentions Expo, EAS, Expo Go, or an expo-* package, or t…"
           },
           {
             "name": "expo-project-structure",
