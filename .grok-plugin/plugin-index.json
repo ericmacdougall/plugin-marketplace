@@ -1631,8 +1631,8 @@
       }
     },
     "vercel": {
-      "sha": "82fa491886796702df4727fd0845f0c7c1d3d16e",
-      "version": "0.54.1",
+      "sha": "8bb46159108f0cd6a749959b20c1411257411090",
+      "version": "0.56.0",
       "components": {
         "agents": [
           {
@@ -1711,6 +1711,10 @@
             "description": "Project bootstrapping orchestrator for repos that depend on Vercel-linked resources (databases, auth, and managed integ…"
           },
           {
+            "name": "botid",
+            "description": "Protect specific routes and server actions from bots in code with Vercel BotID (`botid` npm package). Use when installi…"
+          },
+          {
             "name": "build-agents",
             "description": "Default guidance for building AI agents. Use for generic requests to build, create, scaffold, design, architect, or imp…"
           },
@@ -1723,12 +1727,20 @@
             "description": "Vercel Chat SDK expert guidance. Use when building multi-platform chat bots — Slack, Telegram, Microsoft Teams, Discord…"
           },
           {
+            "name": "client-side-security",
+            "description": "Protect what runs in your users' browsers on Vercel with a Content-Security-Policy header and Page Integrity script mon…"
+          },
+          {
             "name": "create-a-backend",
             "description": "Backend architecture guidance. Use when planning, building, or migrating an API or backend; choosing between Functions,…"
           },
           {
             "name": "custom-metrics",
-            "description": "Emit and query Vercel Custom Metrics. Use when instrumenting application or business measurements in Vercel Functions,…"
+            "description": "Emit and query Vercel Custom Metrics. Use proactively whenever you write or change server code that runs as a Vercel Fu…"
+          },
+          {
+            "name": "daemons",
+            "description": "Vercel Daemons guidance — long-running background workers built from a Dockerfile and declared under the `daemons` key…"
           },
           {
             "name": "deployments-cicd",
@@ -1748,7 +1760,7 @@
           },
           {
             "name": "flags-sdk",
-            "description": "Set up and use feature flags and A/B tests with the Flags SDK (`flags` npm package) and Vercel Flags. Use when installi…"
+            "description": "Implement feature flags in Next.js or SvelteKit code with the Flags SDK (`flags` npm package). Use when installing or c…"
           },
           {
             "name": "is-agentic",
@@ -1767,12 +1779,16 @@
             "description": "Guide for building, configuring, and deploying microfrontends on Vercel. Use this skill when the user mentions microfro…"
           },
           {
+            "name": "offload-to-sandbox",
+            "description": "Offload heavy builds, full test suites and parallel experiments from the local machine to Vercel Sandboxes with the `ve…"
+          },
+          {
             "name": "queues",
             "description": "Vercel Queues guidance — durable topics with at-least-once delivery, independent consumer groups, retries, delays, and…"
           },
           {
             "name": "react-best-practices",
-            "description": "React best-practices reviewer for TSX files. Triggers after editing multiple TSX components to run a condensed quality…"
+            "description": "Vercel's React and Next.js performance rules (70 rules in 8 categories ordered by impact - eliminating waterfalls, bund…"
           },
           {
             "name": "routing-middleware",
@@ -1784,7 +1800,7 @@
           },
           {
             "name": "vercel-agent",
-            "description": "Vercel Agent guidance — dashboard and Slack chat, code review, production investigation, approved actions, and product…"
+            "description": "Vercel Agent guidance — dashboard and Slack chat, code review, Security Review, production investigation, approved acti…"
           },
           {
             "name": "vercel-cli",
@@ -1799,6 +1815,10 @@
             "description": "Vercel Firewall expert guidance — automatic DDoS mitigation, the Vercel WAF (custom rules, IP blocking, managed ruleset…"
           },
           {
+            "name": "vercel-flags",
+            "description": "Feature flags, A/B tests, and gradual rollouts with Vercel Flags, in any app or framework. Use whenever the user is pla…"
+          },
+          {
             "name": "vercel-functions",
             "description": "Vercel Functions expert guidance — Node.js/Bun/Python runtimes, Fluid Compute, long-duration (30 min) functions, large…"
           },
@@ -1807,12 +1827,20 @@
             "description": "Vercel Sandbox guidance — ephemeral Firecracker microVMs for running untrusted code safely. Supports AI agents, code ge…"
           },
           {
+            "name": "vercel-schedules",
+            "description": "Vercel Schedules guidance — run a private function, route, or Vercel Queues topic on a cron cadence or once at a set ti…"
+          },
+          {
             "name": "vercel-services",
             "description": "Configure and troubleshoot Vercel Services for multiple frontends and backends in one project. Use when composing a pol…"
           },
           {
             "name": "vercel-storage",
             "description": "Vercel storage expert guidance — Blob, Global Config (formerly Edge Config), and Marketplace storage (Neon Postgres, Up…"
+          },
+          {
+            "name": "vercel-tracing",
+            "description": "Set up OpenTelemetry instrumentation for Vercel Tracing and query the resulting spans. Use when adding or fixing `@verc…"
           },
           {
             "name": "verification",
